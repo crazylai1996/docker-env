@@ -1,0 +1,210 @@
+version: "2"
+services:
+  mysql:
+    container_name: mysql
+    image: mysql:8.0.17
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+    command:
+      --default-authentication-plugin=mysql_native_password
+      --character-set-server=utf8mb4
+      --collation-server=utf8mb4_general_ci
+      --explicit_defaults_for_timestamp=true
+      --lower_case_table_names=1
+      --max_allowed_packet=128M;
+    volumes:
+      - ./mysql/data:/var/lib/mysql
+      - ./mysql/config:/etc/mysql/conf.d
+      - ./mysql/my.cnf:/etc/my.cnf
+      - ./mysql/init:/docker-entrypoint-initdb.d/
+    ports:
+      - "3306:3306"
+  nacos:
+    image: nacos/nacos-server:1.3.1
+    container_name: nacos
+    env_file:
+      - ./nacos/nacos-standlone-mysql.env
+    volumes:
+      - ./nacos/logs/:/home/nacos/logs
+      - ./nacos/custom.properties:/home/nacos/init.d/custom.properties
+      - ./nacos/plugins/mysql/:/home/nacos/plugins/mysql/
+    ports:
+      - "8848:8848"
+      - "9555:9555"
+    restart: always
+  xxl-job-admin:
+    image: xuxueli/xxl-job-admin:2.1.0
+    container_name: xxl-job-admin
+    environment:
+      TZ: Asia/Shanghai
+      PARAMS: '--spring.config.location=/application.properties'
+      JAVA_OPTS: '-Xms256m -Xmx512m'
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./xxl-job-admin/applogs:/data/applogs
+      - ./xxl-job-admin/application.properties:/application.properties
+    restart: always
+  redis:
+    image: redis
+    container_name: redis
+    ports:
+      - "6379:6379"
+    command: redis-server /etc/redis/redis.conf
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/hosts:/etc/hosts:ro
+      - ./redis/data:/data
+      - ./redis/conf/redis.conf:/etc/redis/redis.conf
+    restart: always
+  rabbitmq:
+    restart: always
+    image: rabbitmq
+    container_name: rabbitmq
+    ports:
+      - "4369:4369"
+      - "5671:5671"
+      - "5672:5672"
+      - "15672:15672"
+      - "25672:25672"
+    environment:
+      RABBITMQ_DEFAULT_VHOST: /
+      RABBITMQ_DEFAULT_USER: rabbitmq
+      RABBITMQ_DEFAULT_PASS: rabbitmq
+      RABBITMQ_LOGS: /var/lib/rabbitmq/rabbitmq.log
+      RABBITMQ_SASL_LOGS: /var/lib/rabbitmq/rabbitmq-sasl.log
+      RABBITMQ_ERLANG_COOKIE: LZJADKXKLULIXFKAALGX
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "200k"
+        max-file: "10"
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/hosts:/etc/hosts:ro
+      - ./rabbitmq:/var/lib/rabbitmq
+    network_mode: "host"
+  zookeeper:
+    image: zookeeper:3.4.14
+    container_name: zookeeper
+    environment:
+      ZOO_MY_ID: 1
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/hosts:/etc/hosts:ro
+      - ./zookeeper/data:/data
+      - ./zookeeper/logs:/datalog
+    ports:
+      - "2181:2181"
+    restart: always
+  kafka1:
+    image: wurstmeister/kafka
+    container_name: kafka1
+    ports:
+      - '9092'
+      - '9094:9094'
+    depends_on:
+      - 'zookeeper'
+    environment:
+      KAFKA_ZOOKEEPER_CONNECT: 'zookeeper:2181'
+      KAFKA_LISTENERS: 'INSIDE://kafka1:9092,OUTSIDE://kafka1:9094'
+      KAFKA_ADVERTISED_LISTENERS: 'INSIDE://kafka1:9092,OUTSIDE://${EXTERNAL_IP}:9094'
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: 'INSIDE:PLAINTEXT,OUTSIDE:PLAINTEXT'
+      KAFKA_INTER_BROKER_LISTENER_NAME: INSIDE
+      KAFKA_LOG_DIRS: /kafka/logs
+      KAFKA_BROKER_ID: 1
+      KAFKA_CREATE_TOPICS: "test_topic:1:3"
+    volumes:
+      - '/var/run/docker.sock:/var/run/docker.sock'
+      - './kafka/kafka-logs/1:/kafka'
+  kafka2:
+    image: wurstmeister/kafka
+    container_name: kafka2
+    ports:
+      - '9092'
+      - '9095:9095'
+    depends_on:
+      - 'zookeeper'
+    environment:
+      KAFKA_ZOOKEEPER_CONNECT: 'zookeeper:2181'
+      KAFKA_LISTENERS: 'INSIDE://kafka2:9092,OUTSIDE://kafka2:9095'
+      KAFKA_ADVERTISED_LISTENERS: 'INSIDE://kafka2:9092,OUTSIDE://${EXTERNAL_IP}:9095'
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: 'INSIDE:PLAINTEXT,OUTSIDE:PLAINTEXT'
+      KAFKA_INTER_BROKER_LISTENER_NAME: INSIDE
+      KAFKA_LOG_DIRS: /kafka/logs
+      KAFKA_BROKER_ID: 2
+    volumes:
+      - '/var/run/docker.sock:/var/run/docker.sock'
+      - './kafka/kafka-logs/2:/kafka'
+  kafka3:
+    image: wurstmeister/kafka
+    container_name: kafka3
+    ports:
+      - '9092'
+      - '9096:9096'
+    depends_on:
+      - 'zookeeper'
+    environment:
+      KAFKA_ZOOKEEPER_CONNECT: 'zookeeper:2181'
+      KAFKA_LISTENERS: 'INSIDE://kafka3:9092,OUTSIDE://kafka3:9096'
+      KAFKA_ADVERTISED_LISTENERS: 'INSIDE://kafka3:9092,OUTSIDE://${EXTERNAL_IP}:9096'
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: 'INSIDE:PLAINTEXT,OUTSIDE:PLAINTEXT'
+      KAFKA_INTER_BROKER_LISTENER_NAME: INSIDE
+      KAFKA_LOG_DIRS: /kafka/logs
+      KAFKA_BROKER_ID: 3
+    volumes:
+      - '/var/run/docker.sock:/var/run/docker.sock'
+      - './kafka/kafka-logs/3:/kafka'
+  kafka-manager:
+    image: sheepkiller/kafka-manager
+    container_name: kafka-manager
+    ports:
+      - "9000:9000"
+    environment:
+      ZK_HOSTS: zookeeper:2181
+    restart: always
+    depends_on:
+      - kafka1
+      - kafka2
+      - kafka3
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:6.8.1
+    container_name: elasticsearch
+    environment:
+      - node.name=my-es
+      - cluster.name=my-es-cluster
+      - "ES_JAVA_OPTS=-Xms1g -Xmx1g"
+      - network.host=0.0.0.0
+    volumes:
+      - ./elasticsearch/data:/usr/share/elasticsearch/data
+      - ./elasticsearch/plugins:/usr/share/elasticsearch/plugins
+    ports:
+      - "9200:9200"
+      - "9300:9300"
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    restart: always
+  kibana:
+    container_name: kibana
+    image: docker.elastic.co/kibana/kibana:6.8.1
+    volumes:
+      - ./kibana/kibana.yml:/usr/share/kibana/config/kibana.yml
+    ports:
+      - "5601:5601"
+    depends_on:
+      - elasticsearch
+    restart: always
+  sentinel-dashboard:
+    image: ascdc/jdk8
+    container_name: sentinel-dashboard
+    ports:
+      - "8090:8090"
+      - "8722:8722"
+    volumes:
+        - ./sentinel-dashboard/sentinel-dashboard.jar:/data/sentinel-dashboard.jar
+        - ./sentinel-dashboard/logs:/data/sentinel-dashboard-1.6.3/
+    entrypoint: 'java -Xms256m -Xmx512m -jar /data/sentinel-dashboard.jar'
+    environment:
+        - TZ=Asia/Shanghai
