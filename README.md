@@ -1,0 +1,1 @@
+环境变量**EXTERNAL_IP**为宿主机IP
